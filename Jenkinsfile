@@ -1,53 +1,30 @@
 pipeline {
-    // 1. AGENT & TOOLS
-    // Define the execution environment
     agent any
 
-    // Define the tools to be automatically installed
-    // This name MUST match the one you configured in Jenkins > Tools
     tools {
-        maven 'Maven-3.9.11'
+        maven 'Maven-3.9.6'
         jdk 'JDK-25'
     }
 
-    // 2. STAGES (The CI Workflow)
-    // The main body of our pipeline
     stages {
-        // The 'Build' stage runs compile and tests, then packages the app
         stage('Build, Test & Package') {
             steps {
-                echo "BUILDING THE NEW FEATURE BRANCH! 4"
+                echo "BUILDING THE NEW FEATURE BRANCH!"
                 echo "Testing the new github-user-pat credential!"
-                echo 'Building the Spring PetClinic application...'
-                
-                // 3. RUNNING BUILD TOOLS
-                // Run the Maven 'package' goal.
-                // This automatically compiles, runs tests, and creates the .jar file.
+                // We run 'package' which builds and tests
                 sh 'mvn clean package'
             }
         }
 
-        // This stage runs *after* the build to collect the results
         stage('Archive & Publish Reports') {
             steps {
-                echo 'Archiving the deployable JAR file...'
-                
-                // 4. ARCHIVING ARTIFACTS
-                // Find any .jar file in the 'target' directory and save it
-                // 'fingerprint: true' lets Jenkins track where this file is used
                 archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
-
-                echo 'Publishing JUnit test results...'
-                
-                // 5. TEST REPORTING
-                // Find the XML test reports and let Jenkins parse them
-                // This is what gives you the "Test Result" graphs
                 junit 'target/surefire-reports/*.xml'
             }
         }
-        // This is the new stage to add
+        
         stage('Deploy to Staging') {
-            // This 'when' block makes the stage conditional
+            // This stage will be skipped on our feature branch
             when {
                 branch 'main'
             }
@@ -55,26 +32,49 @@ pipeline {
                 echo "DEPLOYING TO STAGING... (because this is the main branch)"
             }
         }
-    }
 
-    // 6. POST-BUILD ACTIONS
-    // This block runs after all stages are complete
+        // --- ADD THIS NEW STAGE ---
+        stage('Build & Push Docker Image') {
+            steps {
+                script {
+                    // 1. Define your ECR variables
+                    // !! REPLACE THESE WITH YOUR VALUES FROM ECR !!
+                    def ecrRegistry = "123456789012.dkr.ecr.us-east-1.amazonaws.com"
+                    def ecrRepo = "spring-petclinic"
+                    def ecrRegion = "us-east-1"
+                    
+                    // Create an image name with the build number, e.g., "spring-petclinic:5"
+                    def imageName = "${ecrRepo}:${env.BUILD_NUMBER}"
+
+                    // 2. Log into ECR and build/push
+                    // This 'withRegistry' block uses the Amazon ECR plugin
+                    // It finds AWS credentials from the EC2 instance's IAM Role
+                    docker.withRegistry("https://${ecrRegistry}", "ecr:${ecrRegion}") {
+                        
+                        // 3. Build the image from our Dockerfile
+                        // The '.' means "use the Dockerfile in the current directory"
+                        def img = docker.build(imageName, ".")
+
+                        // 4. Push the image to ECR
+                        img.push()
+                        echo "Successfully pushed ${imageName} to ECR"
+                    }
+                }
+            }
+        }
+    } // --- End of stages ---
+
     post {
-        // 'success' runs only if the pipeline is green
         success {
             echo 'Build Succeeded! Ready to deploy.'
         }
         
-        // 'failure' runs only if the pipeline is red
         failure {
             echo 'Build Failed. Please review the logs.'
-            // You could add an email notification here
         }
         
-        // 'always' runs regardless of success or failure
         always {
             echo 'Pipeline run finished.'
-            // This is a great place for cleanup steps
         }
     }
 }
