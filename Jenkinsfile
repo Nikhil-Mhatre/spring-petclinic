@@ -16,6 +16,8 @@ pipeline {
         // The 'Build' stage runs compile and tests, then packages the app
         stage('Build, Test & Package') {
             steps {
+                echo "BUILDING THE NEW FEATURE BRANCH! 4"
+                echo "Testing the new github-user-pat credential!"
                 echo 'Building the Spring PetClinic application...'
                 
                 // 3. RUNNING BUILD TOOLS
@@ -41,6 +43,16 @@ pipeline {
                 // Find the XML test reports and let Jenkins parse them
                 // This is what gives you the "Test Result" graphs
                 junit 'target/surefire-reports/*.xml'
+            }
+        }
+        // This is the new stage to add
+        stage('Deploy to Staging') {
+            // This 'when' block makes the stage conditional
+            when {
+                branch 'main'
+            }
+            steps {
+                echo "DEPLOYING TO STAGING... (because this is the main branch)"
             }
         }
     }
